@@ -40,7 +40,7 @@ def img_load_from_dir(target_dir):
         for picture in list_pictures(folder_name):
             img = load_img(picture) # img type = PIL.image
             img_array = img_to_array(img) # np.array
-            x_array.append(img_array) # input image
+            x_array.append(img_array.astype('uint8')) # input image
             y_array.append(class_index) # label
     x_array = np.asarray(x_array)
     y_array = np.asarray(y_array)
@@ -48,7 +48,6 @@ def img_load_from_dir(target_dir):
 
 # image load
 x_array, y_array = img_load_from_dir('dataset')
-# x_array, y_array = get_dataset('dataset')
 
 # get class name
 class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
@@ -58,7 +57,7 @@ print(class_names)
 x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, test_size=0.1, random_state=1225)
 
 # image sizeを統一(predictのところで元のサイズで再読み込みしたいのでここで行う)
-def resize_img_array(img_array, height=500, width=500):
+def resize_img_array(img_array, height=250, width=250):
     temp_array = []
     for i in range(len(img_array)):
         temp_array.append(cv2.resize(img_array[i], (height, width)))
@@ -67,13 +66,14 @@ def resize_img_array(img_array, height=500, width=500):
 
 x_train = resize_img_array(x_train)
 x_test = resize_img_array(x_test)
-x_train[0].shape
-plt.imshow(x_array[0])
-plt.show()
 
 # preprocessing
 x_train, y_train = preprocess_input(x_train, y_train)
 x_test, y_test = preprocess_input(x_test, y_test)
+
+# x_train[0].shape
+# plt.imshow(x_train[0])
+# plt.show()
 
 # input data profile
 num_classes = len(class_names) # 4 season
@@ -162,7 +162,7 @@ history = model.fit(x_train, y_train,
 
 # save and eval model
 evaluate(model, x_test, y_test, class_names)
-'''
+
 # save_show_results(history, model)
 model.save('seasons_model2.h5')
 
@@ -188,4 +188,3 @@ for idx, class_idx in enumerate(class_pred):
 
 
 plt.imshow(x_test[0])
-'''
