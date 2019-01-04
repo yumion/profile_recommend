@@ -81,47 +81,6 @@ input_shape = x_train.shape[1:]
 print(input_shape)
 
 # model
-'''
-def resblock(x, filters, kernel_size=(3,3)):
-    x_ = Conv2D(filters, kernel_size, padding='same')(x)
-    x_ = BatchNormalization()(x_)
-    x_ = Conv2D(filters, kernel_size, padding='same')(x_)
-    x = Add()([x_, x])
-    x = BatchNormalization()(x)
-    x = Activation('relu')(x)
-    return x
-
-inputs = Input(shape=input_shape, name='input')
-
-x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(inputs)
-x = resblock(x, 32, kernel_size=(5,5))
-x = resblock(x, 32, kernel_size=(5,5))
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-
-x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = resblock(x, 64, kernel_size=(5,5))
-x = resblock(x, 64, kernel_size=(5,5))
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-
-x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = resblock(x, 128, kernel_size=(5,5))
-x = resblock(x, 128, kernel_size=(5,5))
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-
-x = Conv2D(256, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = resblock(x, 256, kernel_size=(5,5))
-x = resblock(x, 256, kernel_size=(5,5))
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-
-x = Flatten()(x)
-x = Dense(512, activation='relu')(x)
-x = Dropout(0.5)(x)
-predictions = Dense(num_classes, activation='softmax', name='prediction')(x)
-'''
 inputs = Input(shape=input_shape, name='input')
 x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(inputs)
 x = BatchNormalization()(x)
@@ -135,13 +94,17 @@ x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
 x = BatchNormalization()(x)
 x = MaxPool2D(pool_size=(2,2))(x)
 x = Dropout(0.25)(x)
-x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
+x = Conv2D(128, kernel_size=(7,7), activation='relu', padding='same')(x)
 x = BatchNormalization()(x)
-x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
+x = Conv2D(128, kernel_size=(7,7), activation='relu', padding='same')(x)
+x = BatchNormalization()(x)
+x = MaxPool2D(pool_size=(2,2))(x)
+x = Conv2D(256, kernel_size=(7,7), activation='relu', padding='same')(x)
+x = BatchNormalization()(x)
+x = Conv2D(256, kernel_size=(7,7), activation='relu', padding='same')(x)
 x = BatchNormalization()(x)
 x = MaxPool2D(pool_size=(2,2))(x)
 x = Dropout(0.25)(x)
-
 x = Flatten()(x)
 x = Dense(512, activation='relu')(x)
 x = Dropout(0.5)(x)
@@ -151,10 +114,10 @@ model = Model(inputs=inputs, outputs=predictions)
 model.summary()
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['acc'])
-callbacks = [EarlyStopping(patience=10)]
+callbacks = [EarlyStopping(patience=5)]
 
 history = model.fit(x_train, y_train,
-                    epochs=100,
+                    epochs=20,
                     batch_size=32,
                     callbacks=callbacks,
                     validation_data=(x_test, y_test)
@@ -164,7 +127,7 @@ history = model.fit(x_train, y_train,
 evaluate(model, x_test, y_test, class_names)
 
 # save_show_results(history, model)
-model.save('seasons_model2.h5')
+model.save('seasons_model.h5')
 
 del model
 model = load_model('seasons_model.h5')
