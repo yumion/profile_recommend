@@ -57,7 +57,7 @@ print(class_names)
 x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, test_size=0.1, random_state=1225)
 
 # image sizeを統一(predictのところで元のサイズで再読み込みしたいのでここで行う)
-def resize_img_array(img_array, height=250, width=250):
+def resize_img_array(img_array, height=416, width=416):
     temp_array = []
     for i in range(len(img_array)):
         temp_array.append(cv2.resize(img_array[i], (height, width)))
@@ -81,30 +81,61 @@ input_shape = x_train.shape[1:]
 print(input_shape)
 
 # model
+'''
+def resblock(x, filters, kernel_size=(3,3)):
+    x_ = Conv2D(filters, kernel_size, padding='same')(x)
+    x_ = BatchNormalization()(x_)
+    x_ = Conv2D(filters, kernel_size, padding='same')(x_)
+    x = Add()([x_, x])
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    return x
+
+inputs = Input(shape=input_shape, name='input')
+
+x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(inputs)
+x = resblock(x, 32, kernel_size=(5,5))
+x = resblock(x, 32, kernel_size=(5,5))
+x = MaxPool2D(pool_size=(2,2))(x)
+x = Dropout(0.25)(x)
+
+x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
+x = resblock(x, 64, kernel_size=(5,5))
+x = resblock(x, 64, kernel_size=(5,5))
+x = MaxPool2D(pool_size=(2,2))(x)
+x = Dropout(0.25)(x)
+
+x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
+x = resblock(x, 128, kernel_size=(5,5))
+x = resblock(x, 128, kernel_size=(5,5))
+x = MaxPool2D(pool_size=(2,2))(x)
+x = Dropout(0.25)(x)
+
+x = Conv2D(256, kernel_size=(5,5), activation='relu', padding='same')(x)
+x = resblock(x, 256, kernel_size=(5,5))
+x = resblock(x, 256, kernel_size=(5,5))
+x = MaxPool2D(pool_size=(2,2))(x)
+x = Dropout(0.25)(x)
+
+x = Flatten()(x)
+x = Dense(512, activation='relu')(x)
+x = Dropout(0.5)(x)
+predictions = Dense(num_classes, activation='softmax', name='prediction')(x)
+'''
 inputs = Input(shape=input_shape, name='input')
 x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(inputs)
 x = BatchNormalization()(x)
-x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
 x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
 x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
 x = BatchNormalization()(x)
 x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-x = Conv2D(128, kernel_size=(7,7), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = Conv2D(128, kernel_size=(7,7), activation='relu', padding='same')(x)
+x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
 x = BatchNormalization()(x)
 x = MaxPool2D(pool_size=(2,2))(x)
-x = Conv2D(256, kernel_size=(7,7), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = Conv2D(256, kernel_size=(7,7), activation='relu', padding='same')(x)
+x = Conv2D(256, kernel_size=(5,5), activation='relu', padding='same')(x)
 x = BatchNormalization()(x)
 x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
+
 x = Flatten()(x)
 x = Dense(512, activation='relu')(x)
 x = Dropout(0.5)(x)
@@ -114,10 +145,10 @@ model = Model(inputs=inputs, outputs=predictions)
 model.summary()
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['acc'])
-callbacks = [EarlyStopping(patience=5)]
+callbacks = [EarlyStopping(patience=10)]
 
 history = model.fit(x_train, y_train,
-                    epochs=20,
+                    epochs=100,
                     batch_size=32,
                     callbacks=callbacks,
                     validation_data=(x_test, y_test)
@@ -127,17 +158,11 @@ history = model.fit(x_train, y_train,
 evaluate(model, x_test, y_test, class_names)
 
 # save_show_results(history, model)
-model.save('seasons_model.h5')
+model.save('seasons_model2.h5')
 
 del model
 model = load_model('seasons_model.h5')
 
-
-## 自分の手持ち画像で分類する
-X = cv2.imread('dataset/spring/013.jpg')
-X = cv2.resize(X, (input_shape[1], input_shape[0]))
-X = np.expand_dims(X, axis=0)
-print(X.shape)
 
 # どの画像がどのクラスへ分類されたかを保存
 y_pred = model.predict(x_test)
@@ -149,5 +174,4 @@ x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, test_size=
 for idx, class_idx in enumerate(class_pred):
     cv2.imwrite('prediction/{0}/{1:03d}.jpg'.format(class_names[class_idx], idx), x_test[idx])
 
-
-plt.imshow(x_test[0])
+# plt.imshow(x_test[0])
