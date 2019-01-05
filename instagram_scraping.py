@@ -3,8 +3,43 @@ from bs4 import BeautifulSoup
 import re
 from PIL import Image
 from io import BytesIO
+import time
+
+pages = 1000
+value = '冬'
+folder = 'winter'
+
+cnt = 0
+for page in range(1, pages+1):
+
+    url = 'https://photohito.com/search/photo/?value={value}&camera-maker=0&camera-model=0&lens-maker=0&lens-model=0&focallength_from=0&focallength_to=0&pref=0&area=0&year=0&month=0&day=0&range=0&order=popular-all&p={page}'.format(value=value, page=page)
+
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'lxml')
+    image_urls = soup.find_all('a', href=re.compile('http://photohito.com/photo/')) # 画像の個別ページへいく
+
+    for image_url in image_urls[1::2]: # 画像とテキストに同じリンクが貼ってあってだぶるため１つ飛ばし
+        time.sleep(0.5)
+        img_page = requests.get(image_url.get('href'))
+        img_soup = BeautifulSoup(img_page.text, 'lxml')
+
+        temp_soup = img_soup.find_all('a', href=re.compile('/user/register'))[2] # なぜかtext=re.compile("お気に入り登録")では引っかからないので、ルールベースで
+        num_favo = temp_soup.span.string # お気に入り登録数
+
+        img_url = img_soup.find_all('img')[3] # 他のおすすめ画像も下に出るので回避
+        r = requests.get(img_url.get('src'))
+        img = Image.open(BytesIO(r.content))
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        # img.show()
+        img.save('dataset/{folder}/{cnt:04d}_like{like}.jpg'.format(folder=folder, cnt=cnt, like=num_favo), 'JPEG', quality=100, optimize=True)
+        cnt += 1
+    if cnt > 3000: break
+
+'''
 import json
 import random
+
 
 def login_instagram(username, passwd):
     BASE_URL = 'https://www.instagram.com/accounts/login/'
@@ -48,25 +83,7 @@ def login_instagram(username, passwd):
     return session
 
 s = login_instagram(username='yumion7488', passwd='yushimo28')
-
-page = 1
-cnt = 0
-
-url = 'https://photohito.com/search/photo/?value={0}&camera-maker=0&camera-model=0&lens-maker=0&lens-model=0&focallength_from=0&focallength_to=0&pref=0&area=0&year=0&month=0&day=0&range=0&order=popular-all&p={1}'.format('春', page)
-
-response = requests.get(url)
-soup = BeautifulSoup(response.text, 'lxml')
-#soup
-
-image_urls = soup.find_all('a', href=re.compile('http://photohito.com/photo/'))
-# image_urls
-
-for image_url in image_urls[1:17]:
-    r = requests.get(image_url.get('src'))
-    img = Image.open(BytesIO(r.content))
-    img.save('dataset/spring/{0:03d}.jpg'.format(cnt), 'JPEG', quality=100, optimize=True)
-    cnt += 1
-
+'''
 
 '''
 from instabot import Bot
