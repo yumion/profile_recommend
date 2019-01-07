@@ -28,19 +28,13 @@ model_cls = load_model('seasons_model.h5')
 model_value = load_model('rank_model.h5')
 
 ## どの画像がどのクラスへ分類されたかを保存
-class_pred_onehot = model_cls.predict(x_test)
-# print(class_pred_onehot)
+class_pred_onehot = model_cls.predict(x_test) #クラス推定
+rank_pred_onehot = model_value.predict(x_test) #ランク推定
 # one-hotから数字へ
 class_pred = np.argmax(class_pred_onehot, axis=1)
-# print(class_pred.shape)
-
-## ランクを推定
-rank_pred_onehot = model_value.predict(x_test)
-# print(rank_pred_onehot)
-# one-hotから数字へ
 rank_pred = np.argmax(rank_pred_onehot, axis=1)
-# print(rank_pred.shape)
+# print(class_pred.shape, rank_pred.shape)
 
 # フォルダに保存
-for idx, class_idx, rank in zip(enumerate(class_pred), rank_pred):
-    cv2.imwrite('prediction/{class}/{rank}_{cnt:04d}.jpg'.format(class=class_names[class_idx], rank=rank, cnt=idx), x_test[idx])
+for idx, class_idx in enumerate(class_pred):
+    cv2.imwrite('prediction/{class}/{rank}_{cnt:04d}.jpg'.format(class=class_names[class_idx], rank=rank_pred[idx], cnt=idx), x_test[idx])
