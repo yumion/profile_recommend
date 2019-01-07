@@ -94,7 +94,7 @@ num_classes = len(class_names) # 4 season
 input_shape = x_train.shape[1:]
 print(input_shape)
 
-'''
+
 # model
 inputs = Input(shape=input_shape, name='input')
 # feature extraction
@@ -136,9 +136,9 @@ x_rgs = Dropout(0.25)(x_rgs)
 x_rgs = Dense(256, activation='relu')(x_rgs)
 x_rgs = Dropout(0.5)(x_rgs)
 regression = Dense(1, activation='relu', name='regression')(x_rgs)
-'''
 
-'''
+
+
 # 同時学習
 model = Model(inputs, [classification, regression])
 model.summary()
@@ -161,143 +161,9 @@ model.save('classifierAndRegression_model.h5')
 # load_model
 del model
 model = load_model('classifierAndRegression_model.h5')
-'''
-
-# create the base pre-trained model
-base_model = InceptionV3(weights='imagenet', include_top=False)
-
-# add a global spatial average pooling layer
-x = base_model.output
-x = GlobalAveragePooling2D()(x)
-
-# classification
-x_cls = Dense(1024, activation='relu')(x)
-classification = Dense(num_classes, activation='softmax', name='classification')(x_cls)
-
-# regression
-x_rgs = Dense(1024, activation='relu')(x)
-regression = Dense(5, activation='relu', name='regression')(x_rgs)
-
-## 季節分類
-# this is the model we will train
-model_cls = Model(inputs=base_model.input, outputs=classification)
-
-# first: train only the top layers (which were randomly initialized)
-# i.e. freeze all convolutional InceptionV3 layers
-for layer in base_model.layers:
-    layer.trainable = False
-
-# compile the model (should be done *after* setting layers to non-trainable)
-model_cls.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-
-# train the model on the new data for a few epochs
-callbacks = [EarlyStopping(patience=5)]
-history_cls = model_cls.fit(x_train, cls_train,
-                            epochs=3,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, cls_test)
-                            )
-
-# at this point, the top layers are well trained and we can start fine-tuning
-# convolutional layers from inception V3. We will freeze the bottom N layers
-# and train the remaining top layers.
-
-# let's visualize layer names and layer indices to see how many layers
-# we should freeze:
-# for i, layer in enumerate(base_model.layers):
-   # print(i, layer.name)
-
-# we chose to train the top 2 inception blocks, i.e. we will freeze
-# the first 249 layers and unfreeze the rest:
-for layer in model_cls.layers[:249]:
-    layer.trainable = False
-for layer in model_cls.layers[249:]:
-    layer.trainable = True
-
-# we need to recompile the model for these modifications to take effect
-# we use SGD with a low learning rate
-from keras.optimizers import SGD
-model_cls.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
-
-# we train our model again (this time fine-tuning the top 2 inception blocks
-# alongside the top Dense layers
-history_cls = model_cls.fit(x_train, cls_train,
-                            epochs=1,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, cls_test)
-                            )
-
-## お気に入り数の回帰
-model_value = Model(inputs=base_model.input, outputs=regression)
-
-for layer in base_model.layers:
-    layer.trainable = False
-
-model_value.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-
-# train the model on the new data for a few epochs
-history_value = model_value.fit(x_train, value_train,
-                            epochs=3,
-                            batch_size=32,
-                            validation_data=(x_test, value_test)
-                            )
-
-# we chose to train the top 2 inception blocks, i.e. we will freeze
-# the first 249 layers and unfreeze the rest:
-for layer in model_value.layers[:249]:
-    layer.trainable = False
-for layer in model_value.layers[249:]:
-    layer.trainable = True
-
-# we need to recompile the model for these modifications to take effect
-# we use SGD with a low learning rate
-from keras.optimizers import SGD
-model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
-
-# we train our model again (this time fine-tuning the top 2 inception blocks
-# alongside the top Dense layers
-history_value = model_value.fit(x_train, value_train,
-                            epochs=10,
-                            batch_size=32,
-                            validation_data=(x_test, value_test)
-                            )
-
-'''
-# 別々に学習
-model_cls = Model(inputs=inputs, outputs=classification)
-# model_cls.summary()
-model_cls.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['acc'])
-
-model_rgs = Model(inputs=inputs, outputs=regression)
-# model_rgs.summary()
-model_rgs.compile(optimizer='adam', loss='mse', metrics=['acc'])
-
-callbacks = [EarlyStopping(patience=5)]
-history_cls = model_cls.fit(x_train, cls_train,
-                            epochs=20,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, cls_test)
-                            )
-
-history_rgs = model_rgs.fit(x_train, value_train,
-                            epochs=20,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, value_test)
-                            )
-'''
 
 # save and eval model
-evaluate(model_cls, x_test, y_test, class_names)
-
-# save_show_results(history, model)
-model_cls.save('seasons_model.h5')
-
-del model_cls
-model_cls = load_model('seasons_model.h5')
+evaluate(model, x_test, y_test, class_names)
 
 
 # どの画像がどのクラスへ分類されたかを保存
