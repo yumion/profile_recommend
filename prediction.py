@@ -10,7 +10,7 @@ from ncc.preprocessing import preprocess_input
 def img_load_from_dir(target_dir):
     x_array = []
     pictures = glob(target_dir)
-    for picture in list_pictures(pictures):
+    for picture in pictures:
         # 入力 x
         img = load_img(picture) # img type = PIL.image
         img_array = img_to_array(img) # np.array

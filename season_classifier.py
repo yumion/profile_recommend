@@ -16,19 +16,19 @@ from keras.objectives import categorical_crossentropy, mse
 from keras.optimizers import SGD
 from keras.utils import plot_model
 from keras.applications.inception_v3 import InceptionV3
-from keras.preprocessing import image
 from keras import backend as K
+from keras.utils import Sequence
 
 from ncc.preprocessing import preprocess_input
 from ncc.validations import save_show_results, evaluate
 
 
 ## get x,y from dataset
-def img_load_from_dir(target_dir):
+def img_load_from_cls_dirs(target_dir):
     x_array, y_array = [], []
-    file_list = glob(target_dir + '*/')
+    folder_list = glob(target_dir + '*/')
     regex = re.compile(r'like(.*).jpg')
-    for class_index, folder_name in enumerate(file_list):
+    for class_index, folder_name in enumerate(folder_list):
         for picture in list_pictures(folder_name):
             # 入力 x
             img = load_img(picture) # img type = PIL.image
@@ -44,27 +44,49 @@ def img_load_from_dir(target_dir):
     return x_array, y_array
 
 # image load
-x_array, y_array = img_load_from_dir('dataset/')
+x_array, y_array = img_load_from_cls_dirs('dataset/')
 
 # get class name
 class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
 print(class_names)
 
+
+def load_num_likes_from_dir(target_dir):
+    y_array = []
+    pictures = glob(target_dir)
+    regex = re.compile(r'like(.*).jpg')
+    for picture in pictures:
+        # ラベル y
+        mo = regex.search(picture) # ファイル名からお気に入り数を取得
+        num_likes = mo.group(1)
+        y_array.append(int(num_likes)) # label
+    # ndarrayに変換
+    y_array = np.asarray(y_array)
+    return y_array
+
+y_array = load_num_likes_from_dir('dataset/*/*')
+
 # お気に入り数の分布
-num_likes = np.zeros(np.max(y_array[:,1]))
-for like in y_array[:,1]:
+# print(np.max(y_array), np.argmax(y_array))
+# print(len(y_array))
+num_likes = np.zeros(np.max(y_array)+1)
+for like in y_array:
     num_likes[like] += 1
-plt.bar(np.arange(np.max(y_array[:,1]), num_likes))
-plt.xlim(100, 1160)
+plt.bar(np.arange(len(num_likes)), num_likes)
+plt.xlabel('Number of favorite')
+plt.ylabel('Number of count')
+# plt.xlim(0, 1100)
+# plt.ylim(0,200)
+plt.savefig('distribution_favorite.png')
 plt.show()
 
-# お気に入り数を5段階にランク分け
+# お気に入り数をランク分けに変換
 for idx, num_likes in enumerate(y_array[:,1]):
-    if num_likes > 500:
+    if num_likes > 300:
         y_array[idx,1] = 2
-    elif num_likes > 200 and num_likes <= 500:
+    elif num_likes > 100 and num_likes <= 300:
         y_array[idx,1] = 1
-    elif num_likes <= 200:
+    elif num_likes <= 100:
         y_array[idx,1] = 0
 
 # train split
@@ -101,6 +123,70 @@ value_test = np.expand_dims(y_test[:,1], axis=-1)
 num_classes = len(class_names) # 4 season
 input_shape = x_train.shape[1:]
 print(input_shape)
+
+
+class MyGenerator(Sequence):
+    """Custom generator"""
+    def __init__(self, data_paths, data_classes, num_of_class, batch_size=32, width=299, height=299, ch=3):
+        """construction
+        :param data_paths: List of image file
+        :param data_classes: List of class
+        :param batch_size: Batch size
+        :param width: Image width
+        :param height: Image height
+        :param ch: Num of image channels
+        :param num_of_class: Num of classes
+        """
+        self.data_paths = data_paths
+        self.data_classes = data_classes
+        self.length = len(data_paths)
+        self.batch_size = batch_size
+        self.width = width
+        self.height = height
+        self.ch = ch
+        self.num_of_class = num_of_class
+        self.num_batches_per_epoch = int((self.length - 1) / batch_size) + 1
+
+
+    def __getitem__(self, idx):
+        """Get batch data
+        :param idx: Index of batch
+        :return imgs: numpy array of images
+        :return labels: numpy array of label
+        """
+        start_pos = self.batch_size * idx
+        end_pos = start_pos + self.batch_size
+        if end_pos > self.length:
+            end_pos = self.length
+        item_paths = self.data_paths[start_pos : end_pos]
+        item_classes = self.data_classes[start_pos : end_pos]
+
+        imgs = np.empty((len(item_paths), self.height, self.width, self.ch), dtype=np.float32)
+        labels = np.empty((len(item_paths), num_of_class), dtype=np.float32)
+        for i, (item_path, item_class) in enumerate(zip(item_paths, item_classes)):
+            img, label = _load_data(item_path, item_class, self.width, self.height)
+            imgs[i, :] = img
+            labels[i] = label
+        imgs, labels = preprocess_input(imgs, labels)
+        return imgs, labels
+
+    def __len__(self):
+        """Batch length"""
+        return self.num_batches_per_epoch
+
+    def on_epoch_end(self):
+        """Task when end of epoch"""
+        pass
+
+    def _load_data(item_path, item_class, width, height):
+        # 入力 x
+        img = load_img(item_path) # img type = PIL.image
+        img_array = img_to_array(img) # np.array
+        img_array = cv2.resize(img_array, (height, width))
+        # ラベル y
+        label = int(item_class)
+        return img_array, label
+
 
 """Inception v3"""
 # create the base pre-trained model

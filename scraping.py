@@ -6,11 +6,11 @@ from io import BytesIO
 import time
 
 pages = 2000
-value = '秋'
-folder = 'autumn'
+value = '冬'
+folder = 'winter'
 
-cnt = 3007
-for page in range(189, pages+1):
+cnt = 3008
+for page in range(190, pages+1):
 
     url = 'https://photohito.com/search/photo/?value={value}&camera-maker=0&camera-model=0&lens-maker=0&lens-model=0&focallength_from=0&focallength_to=0&pref=0&area=0&year=0&month=0&day=0&range=0&order=popular-all&p={page}'.format(value=value, page=page)
 
@@ -40,9 +40,4 @@ for page in range(189, pages+1):
     # 指定した枚数でストップ
     if cnt > 10000:
         break
-
-from tkinter import Tk, messagebox
-root = Tk()
-root.withdraw()
-messagebox.showinfo(value, str(cnt)+'枚')  # 情報ダイアログ表示
-root.quit()
+print('finished')
