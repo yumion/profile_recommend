@@ -94,75 +94,7 @@ num_classes = len(class_names) # 4 season
 input_shape = x_train.shape[1:]
 print(input_shape)
 
-'''
-# model
-inputs = Input(shape=input_shape, name='input')
-# feature extraction
-x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(inputs)
-x = BatchNormalization()(x)
-x = Conv2D(32, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = Conv2D(64, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = Conv2D(128, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-x = Conv2D(256, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = Conv2D(256, kernel_size=(5,5), activation='relu', padding='same')(x)
-x = BatchNormalization()(x)
-x = MaxPool2D(pool_size=(2,2))(x)
-x = Dropout(0.25)(x)
-
-# classification
-x_cls = Flatten()(x)
-x_cls = Dense(512, activation='relu')(x_cls)
-x_cls = Dropout(0.5)(x_cls)
-classification = Dense(num_classes, activation='softmax', name='classification')(x_cls)
-
-# regression
-x_rgs = Flatten()(x)
-x_rgs = Dense(1024, activation='relu')(x_rgs)
-x_rgs = Dropout(0.25)(x_rgs)
-x_rgs = Dense(256, activation='relu')(x_rgs)
-x_rgs = Dropout(0.5)(x_rgs)
-regression = Dense(1, activation='relu', name='regression')(x_rgs)
-'''
-
-'''
-# 同時学習
-model = Model(inputs, [classification, regression])
-model.summary()
-# plot_model(model, show_shapes=True)
-model.compile(optimizer=SGD(momentum=0.9, nesterov=True), loss={'classification': 'categorical_crossentropy', 'regression': 'mse'}, loss_weights={'classification': 0.95, 'regression': 0.05}, metrics=['acc'])
-
-callbacks = [EarlyStopping(patience=5)]
-history = model.fit(x_train, [cls_train, value_train],
-                    epochs=20,
-                    batch_size=32,
-                    callbacks=callbacks,
-                    validation_data=(x_test, [cls_test, value_test])
-                    )
-
-
-
-# save_show_results(history, model)
-model.save('classifierAndRegression_model.h5')
-
-# load_model
-del model
-model = load_model('classifierAndRegression_model.h5')
-'''
-
+"""Inception v3"""
 # create the base pre-trained model
 base_model = InceptionV3(weights='imagenet', include_top=False)
 
@@ -264,31 +196,6 @@ history_value = model_value.fit(x_train, value_train,
                             validation_data=(x_test, value_test)
                             )
 
-'''
-# 別々に学習
-model_cls = Model(inputs=inputs, outputs=classification)
-# model_cls.summary()
-model_cls.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['acc'])
-
-model_rgs = Model(inputs=inputs, outputs=regression)
-# model_rgs.summary()
-model_rgs.compile(optimizer='adam', loss='mse', metrics=['acc'])
-
-callbacks = [EarlyStopping(patience=5)]
-history_cls = model_cls.fit(x_train, cls_train,
-                            epochs=20,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, cls_test)
-                            )
-
-history_rgs = model_rgs.fit(x_train, value_train,
-                            epochs=20,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, value_test)
-                            )
-'''
 
 # save and eval model
 evaluate(model_cls, x_test, y_test, class_names)
@@ -301,7 +208,7 @@ model_cls = load_model('seasons_model.h5')
 
 
 # どの画像がどのクラスへ分類されたかを保存
-y_pred = model.predict(x_test)
+y_pred = model_cls.predict(x_test)
 # print(y_pred)
 class_pred = np.argmax(y_pred, axis=1)
 # print(class_pred.shape)
