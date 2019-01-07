@@ -21,7 +21,7 @@ from keras import backend as K
 
 from ncc.preprocessing import preprocess_input
 from ncc.validations import save_show_results, evaluate
-from ncc.models import Model2D
+
 
 ## get x,y from dataset
 def img_load_from_dir(target_dir):
@@ -52,12 +52,21 @@ print(class_names)
 
 # お気に入り数の分布
 np.min(y_array[:,1])
-num_likes = np.zeros(1200)
+num_likes = np.zeros(np.max(y_array[:,1]))
 for like in y_array[:,1]:
     num_likes[like] += 1
-plt.bar(np.arange(1200), num_likes)
+plt.bar(np.arange(np.max(y_array[:,1]), num_likes))
 plt.xlim(100, 1160)
 plt.show()
+
+# お気に入り数を5段階にランク分け
+for idx, num_likes in enumerate(y_array[:,1]):
+    if num_likes > 500:
+        y_array[idx,1] = 2
+    elif num_likes > 200 and num_likes <= 500:
+        y_array[idx,1] = 1
+    elif num_likes <= 200:
+        y_array[idx,1] = 0
 
 # train split
 x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, test_size=0.1, random_state=1225)
@@ -104,11 +113,17 @@ x = GlobalAveragePooling2D()(x)
 
 # classification
 x_cls = Dense(1024, activation='relu')(x)
+x_cls = Dropout(0.25)(x_cls)
+x_cls = Dense(256, activation='relu')(x_cls)
+x_cls = Dropout(0.5)(x_cls)
 classification = Dense(num_classes, activation='softmax', name='classification')(x_cls)
 
 # regression
 x_rgs = Dense(1024, activation='relu')(x)
-regression = Dense(5, activation='relu', name='regression')(x_rgs)
+x_rgs = Dropout(0.25)(x_rgs)
+x_rgs = Dense(256, activation='relu')(x_rgs)
+x_rgs = Dropout(0.5)(x_rgs)
+regression = Dense(3, activation='relu', name='regression')(x_rgs)
 
 ## 季節分類
 # this is the model we will train
@@ -123,7 +138,6 @@ for layer in base_model.layers:
 model_cls.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
 
 # train the model on the new data for a few epochs
-callbacks = [EarlyStopping(patience=5)]
 history_cls = model_cls.fit(x_train, cls_train,
                             epochs=3,
                             batch_size=32,
@@ -161,6 +175,12 @@ history_cls = model_cls.fit(x_train, cls_train,
                             validation_data=(x_test, cls_test)
                             )
 
+# save and eval model
+evaluate(model_cls, x_test, cls_test, class_names)
+# save_show_results(history, model)
+model_cls.save('seasons_model.h5')
+
+
 ## お気に入り数の回帰
 model_value = Model(inputs=base_model.input, outputs=regression)
 
@@ -183,29 +203,22 @@ for layer in model_value.layers[:249]:
 for layer in model_value.layers[249:]:
     layer.trainable = True
 
-# we need to recompile the model for these modifications to take effect
-# we use SGD with a low learning rate
 from keras.optimizers import SGD
 model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
-
-# we train our model again (this time fine-tuning the top 2 inception blocks
-# alongside the top Dense layers
 history_value = model_value.fit(x_train, value_train,
                             epochs=10,
                             batch_size=32,
                             validation_data=(x_test, value_test)
                             )
-
-
 # save and eval model
-evaluate(model_cls, x_test, y_test, class_names)
-
+evaluate(model_value, x_test, value_test)
 # save_show_results(history, model)
-model_cls.save('seasons_model.h5')
+model_value.save('rank_model.h5')
 
+
+# prediction
 del model_cls
 model_cls = load_model('seasons_model.h5')
-
 
 # どの画像がどのクラスへ分類されたかを保存
 y_pred = model_cls.predict(x_test)

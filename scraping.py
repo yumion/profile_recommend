@@ -6,11 +6,11 @@ from io import BytesIO
 import time
 
 pages = 2000
-value = '春'
-folder = 'spring'
+value = '夏'
+folder = 'summer'
 
-cnt = 3263
-for page in range(205, pages+1):
+cnt = 3031
+for page in range(191, pages+1):
 
     url = 'https://photohito.com/search/photo/?value={value}&camera-maker=0&camera-model=0&lens-maker=0&lens-model=0&focallength_from=0&focallength_to=0&pref=0&area=0&year=0&month=0&day=0&range=0&order=popular-all&p={page}'.format(value=value, page=page)
 
