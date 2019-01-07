@@ -4,6 +4,7 @@ from glob import glob
 import matplotlib.pyplot as plt
 from keras.models import load_model
 from keras_preprocessing.image import img_to_array, list_pictures, load_img
+from ncc.preprocessing import preprocess_input
 
 
 def img_load_from_dir(target_dir):
@@ -18,9 +19,21 @@ def img_load_from_dir(target_dir):
     x_array = np.asarray(x_array)
     return x_array
 
-x_test = img_load_from_dir('test_data/')
+def resize_img_array(img_array, height=299, width=299):
+    temp_array = []
+    for i in range(len(img_array)):
+        temp_array.append(cv2.resize(img_array[i], (height, width)))
+    img_array = np.asarray(temp_array)
+    return img_array
 
-class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
+# 読み込み
+x_test = img_load_from_dir('testdata/')
+# preprocessing
+x_test = resize_img_array(x_test)
+x_test = preprocess_input(x_test)
+
+# クラス名をとってくる
+class_names = [x.split('/')[-1] for x in glob('dataset/*')]
 # print(class_names)
 
 # modelのロード

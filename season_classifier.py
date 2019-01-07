@@ -26,7 +26,7 @@ from ncc.validations import save_show_results, evaluate
 ## get x,y from dataset
 def img_load_from_dir(target_dir):
     x_array, y_array = [], []
-    file_list = glob(target_dir + '/*/')
+    file_list = glob(target_dir + '*/')
     regex = re.compile(r'like(.*).jpg')
     for class_index, folder_name in enumerate(file_list):
         for picture in list_pictures(folder_name):
@@ -44,14 +44,13 @@ def img_load_from_dir(target_dir):
     return x_array, y_array
 
 # image load
-x_array, y_array = img_load_from_dir('dataset')
+x_array, y_array = img_load_from_dir('dataset/')
 
 # get class name
 class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
 print(class_names)
 
 # お気に入り数の分布
-np.min(y_array[:,1])
 num_likes = np.zeros(np.max(y_array[:,1]))
 for like in y_array[:,1]:
     num_likes[like] += 1
