@@ -23,108 +23,6 @@ from ncc.preprocessing import preprocess_input
 from ncc.validations import save_show_results, evaluate
 
 
-## get x,y from dataset
-def img_load_from_cls_dirs(target_dir):
-    x_array, y_array = [], []
-    folder_list = glob(target_dir + '*/')
-    regex = re.compile(r'like(.*).jpg')
-    for class_index, folder_name in enumerate(folder_list):
-        for picture in list_pictures(folder_name):
-            # 入力 x
-            img = load_img(picture) # img type = PIL.image
-            img_array = img_to_array(img) # np.array
-            x_array.append(img_array.astype('uint8')) # input image
-            # ラベル y
-            mo = regex.search(picture) # ファイル名からお気に入り数を取得
-            num_likes = mo.group(1)
-            y_array.append([class_index, int(num_likes)]) # label
-    # ndarrayに変換
-    x_array = np.asarray(x_array)
-    y_array = np.asarray(y_array)
-    return x_array, y_array
-
-# image load
-x_array, y_array = img_load_from_cls_dirs('dataset/')
-
-# get class name
-class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
-print(class_names)
-
-
-def load_num_likes_from_dir(target_dir):
-    y_array = []
-    pictures = glob(target_dir)
-    regex = re.compile(r'like(.*).jpg')
-    for picture in pictures:
-        # ラベル y
-        mo = regex.search(picture) # ファイル名からお気に入り数を取得
-        num_likes = mo.group(1)
-        y_array.append(int(num_likes)) # label
-    # ndarrayに変換
-    y_array = np.asarray(y_array)
-    return y_array
-
-y_array = load_num_likes_from_dir('dataset/*/*')
-
-# お気に入り数の分布
-# print(np.max(y_array), np.argmax(y_array))
-# print(len(y_array))
-num_likes = np.zeros(np.max(y_array)+1)
-for like in y_array:
-    num_likes[like] += 1
-plt.bar(np.arange(len(num_likes)), num_likes)
-plt.xlabel('Number of favorite')
-plt.ylabel('Number of count')
-# plt.xlim(0, 1100)
-# plt.ylim(0,200)
-plt.savefig('distribution_favorite.png')
-plt.show()
-
-# お気に入り数をランク分けに変換
-for idx, num_likes in enumerate(y_array[:,1]):
-    if num_likes > 300:
-        y_array[idx,1] = 2
-    elif num_likes > 100 and num_likes <= 300:
-        y_array[idx,1] = 1
-    elif num_likes <= 100:
-        y_array[idx,1] = 0
-
-# train split
-x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, test_size=0.1, random_state=1225)
-
-# image sizeを統一(predictのところで元のサイズで再読み込みしたいのでここで行う)
-def resize_img_array(img_array, height=299, width=299):
-    temp_array = []
-    for i in range(len(img_array)):
-        temp_array.append(cv2.resize(img_array[i], (height, width)))
-    img_array = np.asarray(temp_array)
-    return img_array
-
-x_train = resize_img_array(x_train)
-x_test = resize_img_array(x_test)
-
-# preprocessing
-x_train, cls_train = preprocess_input(x_train, y_train[:,0])
-x_test, cls_test = preprocess_input(x_test, y_test[:,0])
-# クラスラベルだけone-hotにして、お気に入り数を右に追加
-value_train = np.expand_dims(y_train[:,1], axis=-1)
-value_test = np.expand_dims(y_test[:,1], axis=-1)
-# クラスラベルと回帰値をドッキングした教師ラベル
-# y_train_combined = np.hstack([cls_train, value_train])
-# y_test_combined = np.hstack([cls_test, value_test])
-
-# cls_train.shape
-# value_train.shape
-# y_train_combined.shape
-# plt.imshow(x_train[0])
-# plt.show()
-
-# input data profile
-num_classes = len(class_names) # 4 season
-input_shape = x_train.shape[1:]
-print(input_shape)
-
-
 class MyGenerator(Sequence):
     """Custom generator"""
     def __init__(self, data_paths, data_classes, num_of_class, batch_size=32, width=299, height=299, ch=3):
@@ -186,6 +84,67 @@ class MyGenerator(Sequence):
         # ラベル y
         label = int(item_class)
         return img_array, label
+
+
+
+# get class name
+class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
+print(class_names)
+
+def load_img_path_and_class(target_dir):
+    paths = glob(target_dir)
+    classnames = 
+
+    return paths, class_num
+
+def load_num_likes_from_dir(target_dir):
+    y_array = []
+    pictures = glob(target_dir)
+    regex = re.compile(r'like(.*).jpg')
+    for picture in pictures:
+        # ラベル y
+        mo = regex.search(picture) # ファイル名からお気に入り数を取得
+        num_likes = mo.group(1)
+        y_array.append(int(num_likes)) # label
+    # ndarrayに変換
+    y_array = np.asarray(y_array)
+    return y_array
+
+x_paths = glob('dataset/*/*')
+y_classes =
+y_likes = load_num_likes_from_dir('dataset/*/*')
+'''
+# お気に入り数の分布
+# print(np.max(y_array), np.argmax(y_array))
+# print(len(y_array))
+num_likes = np.zeros(np.max(y_array)+1)
+for like in y_array:
+    num_likes[like] += 1
+plt.bar(np.arange(len(num_likes)), num_likes)
+plt.xlabel('Number of favorite')
+plt.ylabel('Number of count')
+# plt.xlim(0, 1100)
+# plt.ylim(0,200)
+plt.savefig('distribution_favorite.png')
+plt.show()
+'''
+# お気に入り数をランク分けに変換
+for idx, num_likes in enumerate(y_likes):
+    if num_likes > 300:
+        y_likes[idx] = 2
+    elif num_likes > 100 and num_likes <= 300:
+        y_likes[idx] = 1
+    elif num_likes <= 100:
+        y_likes[idx] = 0
+
+# train split
+train_paths, test_paths, train_classes, test_classes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
+
+
+# input data profile
+num_classes = len(class_names) # 4 season
+input_shape = x_train.shape[1:]
+print(input_shape)
 
 
 """Inception v3"""
