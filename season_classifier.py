@@ -18,14 +18,14 @@ from keras.utils import plot_model
 from keras.applications.inception_v3 import InceptionV3
 from keras import backend as K
 from keras.utils import Sequence
+from keras.utils.np_utils import to_categorical
 
-from ncc.preprocessing import preprocess_input
-from ncc.validations import save_show_results, evaluate
-
+from ncc.validations import evaluate
+from ncc.history import show_history
 
 class MyGenerator(Sequence):
     """Custom generator"""
-    def __init__(self, data_paths, data_classes, num_of_class, batch_size=32, width=299, height=299, ch=3):
+    def __init__(self, data_paths, data_classes, num_of_class=4, batch_size=32, width=299, height=299, ch=3):
         """construction
         :param data_paths: List of image file
         :param data_classes: List of class
@@ -60,12 +60,11 @@ class MyGenerator(Sequence):
         item_classes = self.data_classes[start_pos : end_pos]
 
         imgs = np.empty((len(item_paths), self.height, self.width, self.ch), dtype=np.float32)
-        labels = np.empty((len(item_paths), num_of_class), dtype=np.float32)
+        labels = np.empty((len(item_paths), self.num_of_class), dtype=np.int8)
         for i, (item_path, item_class) in enumerate(zip(item_paths, item_classes)):
-            img, label = _load_data(item_path, item_class, self.width, self.height)
+            img, label = self._load_data(item_path, item_class, self.num_of_class, self.width, self.height)
             imgs[i, :] = img
-            labels[i] = label
-        imgs, labels = preprocess_input(imgs, labels)
+            labels[i, label] = 1.
         return imgs, labels
 
     def __len__(self):
@@ -76,15 +75,15 @@ class MyGenerator(Sequence):
         """Task when end of epoch"""
         pass
 
-    def _load_data(item_path, item_class, width, height):
+    def _load_data(self, item_path, item_class, num_of_class, width, height):
         # 入力 x
         img = load_img(item_path) # img type = PIL.image
         img_array = img_to_array(img) # np.array
         img_array = cv2.resize(img_array, (height, width))
+        img_array /= 255.
         # ラベル y
         label = int(item_class)
         return img_array, label
-
 
 
 # get class name
@@ -92,10 +91,13 @@ class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をと
 print(class_names)
 
 def load_img_path_and_class(target_dir):
-    paths = glob(target_dir)
-    classnames = 
-
-    return paths, class_num
+    paths = glob(target_dir+'*/*')
+    classnames = [name.split('/')[-1] for name in glob(target_dir+'*')]
+    class_indices = []
+    for path in paths:
+        classname = path.split('/')[-2]
+        class_indices.append(int(classnames.index(classname)))
+    return paths, class_indices
 
 def load_num_likes_from_dir(target_dir):
     y_array = []
@@ -106,45 +108,50 @@ def load_num_likes_from_dir(target_dir):
         mo = regex.search(picture) # ファイル名からお気に入り数を取得
         num_likes = mo.group(1)
         y_array.append(int(num_likes)) # label
-    # ndarrayに変換
-    y_array = np.asarray(y_array)
     return y_array
 
-x_paths = glob('dataset/*/*')
-y_classes =
+x_paths, y_classes = load_img_path_and_class('dataset/')
 y_likes = load_num_likes_from_dir('dataset/*/*')
-'''
+
 # お気に入り数の分布
 # print(np.max(y_array), np.argmax(y_array))
 # print(len(y_array))
-num_likes = np.zeros(np.max(y_array)+1)
-for like in y_array:
+num_likes = np.zeros(np.max(y_likes)+1)
+for like in y_likes:
     num_likes[like] += 1
 plt.bar(np.arange(len(num_likes)), num_likes)
 plt.xlabel('Number of favorite')
 plt.ylabel('Number of count')
 # plt.xlim(0, 1100)
 # plt.ylim(0,200)
-plt.savefig('distribution_favorite.png')
+# plt.savefig('distribution_favorite.png')
 plt.show()
-'''
+
 # お気に入り数をランク分けに変換
 for idx, num_likes in enumerate(y_likes):
     if num_likes > 300:
         y_likes[idx] = 2
-    elif num_likes > 100 and num_likes <= 300:
+    elif num_likes > 200 and num_likes <= 300:
         y_likes[idx] = 1
-    elif num_likes <= 100:
+    elif num_likes <= 200:
         y_likes[idx] = 0
 
-# train split
-train_paths, test_paths, train_classes, test_classes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
-
+# split train and test
+train_paths, test_paths, train_classes, test_classes, train_likes, test_likes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
 
 # input data profile
-num_classes = len(class_names) # 4 season
-input_shape = x_train.shape[1:]
+season_classes = len(class_names) # 4 season
+rank_classes = np.argmax(y_likes)
+input_shape = len(train_paths)
 print(input_shape)
+
+# 画像枚数が多いのでgeneratorで渡す
+# 季節分類
+season_train_gen = MyGenerator(train_paths, train_classes, num_of_class=season_classes, batch_size=128)
+season_test_gen = MyGenerator(test_paths, test_classes, num_of_class=season_classes, batch_size=128)
+# お気に入り数分類
+rank_train_gen = MyGenerator(train_paths, train_likes, num_of_class=rank_classes, batch_size=128)
+rank_test_gen = MyGenerator(test_paths, test_likes, num_of_class=rank_classes, batch_size=128)
 
 
 """Inception v3"""
@@ -160,14 +167,14 @@ x_cls = Dense(1024, activation='relu')(x)
 x_cls = Dropout(0.25)(x_cls)
 x_cls = Dense(256, activation='relu')(x_cls)
 x_cls = Dropout(0.5)(x_cls)
-classification = Dense(num_classes, activation='softmax', name='classification')(x_cls)
+classification = Dense(season_classes, activation='softmax', name='classification')(x_cls)
 
 # regression
 x_rgs = Dense(1024, activation='relu')(x)
 x_rgs = Dropout(0.25)(x_rgs)
 x_rgs = Dense(256, activation='relu')(x_rgs)
 x_rgs = Dropout(0.5)(x_rgs)
-regression = Dense(3, activation='relu', name='regression')(x_rgs)
+regression = Dense(rank_classes, activation='softmax', name='regression')(x_rgs)
 
 ## 季節分類
 # this is the model we will train
@@ -182,12 +189,13 @@ for layer in base_model.layers:
 model_cls.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
 
 # train the model on the new data for a few epochs
-history_cls = model_cls.fit(x_train, cls_train,
-                            epochs=3,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, cls_test)
-                            )
+history_cls = model_cls.fit_generator(season_train_gen,
+                steps_per_epoch=season_train_gen.num_batches_per_epoch,
+                validation_data=season_test_gen,
+                validation_steps=season_test_gen.num_batches_per_epoch,
+                epochs=2,
+                shuffle=True
+                )
 
 # at this point, the top layers are well trained and we can start fine-tuning
 # convolutional layers from inception V3. We will freeze the bottom N layers
@@ -212,20 +220,31 @@ model_cls.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_cros
 
 # we train our model again (this time fine-tuning the top 2 inception blocks
 # alongside the top Dense layers
-history_cls = model_cls.fit(x_train, cls_train,
-                            epochs=1,
-                            batch_size=32,
-                            callbacks=callbacks,
-                            validation_data=(x_test, cls_test)
-                            )
+callbacks = [EarlyStopping(patience=5)]
+history_cls_add = model_cls.fit_generator(season_train_gen,
+                steps_per_epoch=season_train_gen.num_batches_per_epoch,
+                validation_data=season_test_gen,
+                validation_steps=season_test_gen.num_batches_per_epoch,
+                epochs=20,
+                callbaks=callbacks,
+                shuffle=True
+                )
 
 # save and eval model
-evaluate(model_cls, x_test, cls_test, class_names)
+# evaluate(model_cls, x_test, cls_test, class_names)
 # save_show_results(history, model)
 model_cls.save('seasons_model.h5')
-
+show_history(history_cls)
 
 ## お気に入り数の回帰
+# クラスに重み付け
+ratio_likes = num_likes / np.max(num_likes) # 正規化
+ratio_likes = np.reciprocal(ratio_likes) # 逆数
+class_weight = {}
+for idx, value in enumerate(ratio_likes):
+    class_weight[idx] = value
+# print(class_weight)
+
 model_value = Model(inputs=base_model.input, outputs=regression)
 
 for layer in base_model.layers:
@@ -234,11 +253,14 @@ for layer in base_model.layers:
 model_value.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
 
 # train the model on the new data for a few epochs
-history_value = model_value.fit(x_train, value_train,
-                            epochs=3,
-                            batch_size=32,
-                            validation_data=(x_test, value_test)
-                            )
+history_value = model_value.fit_generator(rank_train_gen,
+                steps_per_epoch=rank_train_gen.num_batches_per_epoch,
+                validation_data=rank_test_gen,
+                validation_steps=rank_test_gen.num_batches_per_epoch,
+                epochs=1,
+                class_weight=class_weight,
+                shuffle=True
+                )
 
 # we chose to train the top 2 inception blocks, i.e. we will freeze
 # the first 249 layers and unfreeze the rest:
@@ -249,11 +271,16 @@ for layer in model_value.layers[249:]:
 
 from keras.optimizers import SGD
 model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
-history_value = model_value.fit(x_train, value_train,
-                            epochs=10,
-                            batch_size=32,
-                            validation_data=(x_test, value_test)
-                            )
+callbacks = [EarlyStopping(patience=5)]
+history_value_add = model_value.fit_generator(rank_train_gen,
+                steps_per_epoch=rank_train_gen.num_batches_per_epoch,
+                validation_data=rank_test_gen,
+                validation_steps=rank_test_gen.num_batches_per_epoch,
+                epochs=10,
+                class_weight=class_weight,
+                callbacks=callbacks,
+                shuffle=True
+                )
 # save and eval model
 evaluate(model_value, x_test, value_test)
 # save_show_results(history, model)
