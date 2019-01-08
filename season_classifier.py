@@ -111,9 +111,6 @@ def load_num_likes_from_dir(target_dir):
         y_array.append(int(num_likes)) # label
     return y_array
 
-x_paths, y_classes = load_img_path_and_class('dataset/')
-y_likes = load_num_likes_from_dir('dataset/*/*')
-
 # お気に入り数をランク分けに変換
 def convert_to_class(y_likes):
     for idx, likes in enumerate(y_likes):
@@ -124,6 +121,10 @@ def convert_to_class(y_likes):
         elif likes <= 200:
             y_likes[idx] = 0
     return y_likes
+
+
+x_paths, y_classes = load_img_path_and_class('dataset/')
+y_likes = load_num_likes_from_dir('dataset/*/*')
 
 y_likes = convert_to_class(y_likes)
 
@@ -142,7 +143,7 @@ plt.ylabel('Number of count')
 plt.show()
 
 # split train and test
-train_paths, test_paths, train_classes, test_classes, train_likes, test_likes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
+# train_paths, test_paths, train_classes, test_classes, train_likes, test_likes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
 
 # input data profile
 season_classes = len(class_names) # 4 season
@@ -177,8 +178,8 @@ season_test_gen = datagen.flow_from_directory(
         target_size=(299, 299),
         batch_size=128,
         class_mode='categorical',
-        subset='validation',
-        save_to_dir='validation')
+        subset='validation')
+
 
 def rankGenerator(target_dir, subset=None, train_ratio=0.1, batch_size=32, height=299, width=299):
     file_list = glob(target_dir+'*/*')
@@ -214,25 +215,22 @@ def rankGenerator(target_dir, subset=None, train_ratio=0.1, batch_size=32, heigh
             yield x_array, y_array
 
 
-rank_train_gen = rankGenerator('dataset/', subset='training', batch_size=128)
+rank_train_gen = rankGenerator('dataset/', batch_size=128, subset='training')
 rank_test_gen = rankGenerator('dataset/', batch_size=128, subset='validation')
 
 
 """Inception v3"""
 # create the base pre-trained model
 base_model = InceptionV3(weights='imagenet', include_top=False)
-
 # add a global spatial average pooling layer
 x = base_model.output
 x = GlobalAveragePooling2D()(x)
-
 # classification
 x_cls = Dense(1024, activation='relu')(x)
 x_cls = Dropout(0.25)(x_cls)
 x_cls = Dense(256, activation='relu')(x_cls)
 x_cls = Dropout(0.5)(x_cls)
 classification = Dense(season_classes, activation='softmax', name='classification')(x_cls)
-
 # regression
 x_rgs = Dense(1024, activation='relu')(x)
 x_rgs = Dropout(0.25)(x_rgs)
@@ -252,13 +250,12 @@ for layer in base_model.layers:
 
 # compile the model (should be done *after* setting layers to non-trainable)
 model_cls.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-steps_per_epoch = 35849 // 128
-validation_steps = 3981 // 128
+
 # train the model on the new data for a few epochs
 history_cls = model_cls.fit_generator(season_train_gen,
-                steps_per_epoch=steps_per_epoch,
+                steps_per_epoch=len(season_train_gen),
                 validation_data=season_test_gen,
-                validation_steps=validation_steps,
+                validation_steps=len(season_test_gen),
                 epochs=3,
                 shuffle=True
                 )
@@ -288,9 +285,9 @@ model_cls.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_cros
 # alongside the top Dense layers
 # callbacks = [EarlyStopping(patience=5)]
 history_cls_add = model_cls.fit_generator(season_train_gen,
-                steps_per_epoch=steps_per_epoch,
+                steps_per_epoch=len(season_train_gen),
                 validation_data=season_test_gen,
-                validation_steps=validation_steps,
+                validation_steps=len(season_test_gen),
                 epochs=30,
                 shuffle=True
                 )
@@ -298,7 +295,9 @@ history_cls_add = model_cls.fit_generator(season_train_gen,
 # save and eval model
 # evaluate(model_cls, x_test, cls_test, class_names)
 # save_show_results(history, model)
-model_cls.save('seasons_model_add.h5')
+json_model_cls = model_cls.to_json()
+open('seasons_model.json', 'w').write(json_model_cls)
+model_cls.save_weights('seasons_weight_add.h5')
 # show_history(history_cls)
 acc = history_cls.history['acc'] + history_cls_add.history['acc']
 val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
@@ -328,15 +327,13 @@ for layer in base_model.layers:
 model_value.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
 
 # train the model on the new data for a few epochs
-
 history_value = model_value.fit_generator(rank_train_gen,
-                steps_per_epoch=steps_per_epoch,
+                steps_per_epoch=len(rank_train_gen),
                 validation_data=rank_test_gen,
-                validation_steps=validation_steps,
+                validation_steps=len(rank_test_gen),
                 epochs=1,
                 class_weight=class_weight,
-                shuffle=True,
-                use_multiprocessing=True
+                shuffle=True
                 )
 
 # we chose to train the top 2 inception blocks, i.e. we will freeze
@@ -350,9 +347,9 @@ from keras.optimizers import SGD
 model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
 # callbacks = [EarlyStopping(patience=5)]
 history_value_add = model_value.fit_generator(rank_train_gen,
-                steps_per_epoch=rank_train_gen.num_batches_per_epoch,
+                steps_per_epoch=len(rank_train_gen),
                 validation_data=rank_test_gen,
-                validation_steps=rank_test_gen.num_batches_per_epoch,
+                validation_steps=len(rank_test_gen),
                 epochs=10,
                 class_weight=class_weight,
                 shuffle=True
@@ -372,17 +369,35 @@ model_value.save('rank_model_add.h5')
 
 
 # prediction
+from keras.models import model_from_json
 del model_cls
-model_cls = load_model('seasons_model.h5')
+model_cls = load_model('seasons_model_add.h5')
+# json_string = open('seasons_model.json').read()
+# model_cls = model_from_json(json_string)
+# model_cls.load_weights('seasons_weight_add.h5')
 
+datagen = ImageDataGenerator(rescale=1./255, validation_split=0.1)
+season_test_gen = datagen.flow_from_directory(
+        'dataset',
+        target_size=(299, 299),
+        batch_size=32,
+        class_mode='categorical',
+        subset='validation')
 # どの画像がどのクラスへ分類されたかを保存
-y_pred = model_cls.predict_generator(season_test_gen)
+y_pred = model_cls.predict_generator(season_test_gen, steps=len(season_test_gen))
 print(y_pred)
 class_pred = np.argmax(y_pred, axis=1)
 print(class_pred)
+import collections
+collections.Counter(class_pred)
 
 x_test = season_test_gen
 for idx, class_idx in enumerate(class_pred):
-    cv2.imwrite('prediction/{0}/{1:04d}.jpg'.format(class_names[class_idx], idx), x_test[idx])
+    x_temp = x_test[int(idx/32)][0][idx%32] * 255
+    x_temp = x_temp.astype('uint8')
+    cv2.imwrite('prediction/{0}/{1:04d}.jpg'.format(class_names[class_idx], idx), x_temp[..., ::-1])
+x_test[int(4/32)][0].shape
+len(x_test)
+len(class_pred)
 
-# plt.imshow(x_test[0])
+plt.imshow(x_temp)
