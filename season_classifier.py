@@ -19,6 +19,7 @@ from keras.applications.inception_v3 import InceptionV3
 from keras import backend as K
 from keras.utils import Sequence
 from keras.utils.np_utils import to_categorical
+from keras.preprocessing.image import ImageDataGenerator
 
 from ncc.validations import evaluate
 from ncc.history import show_history
@@ -59,8 +60,8 @@ class MyGenerator(Sequence):
         item_paths = self.data_paths[start_pos : end_pos]
         item_classes = self.data_classes[start_pos : end_pos]
 
-        imgs = np.empty((len(item_paths), self.height, self.width, self.ch), dtype=np.float32)
-        labels = np.empty((len(item_paths), self.num_of_class), dtype=np.int8)
+        imgs = np.zeros((len(item_paths), self.height, self.width, self.ch), dtype=np.float32)
+        labels = np.zeros((len(item_paths), self.num_of_class))
         for i, (item_path, item_class) in enumerate(zip(item_paths, item_classes)):
             img, label = self._load_data(item_path, item_class, self.num_of_class, self.width, self.height)
             imgs[i, :] = img
@@ -113,6 +114,19 @@ def load_num_likes_from_dir(target_dir):
 x_paths, y_classes = load_img_path_and_class('dataset/')
 y_likes = load_num_likes_from_dir('dataset/*/*')
 
+# お気に入り数をランク分けに変換
+def convert_to_class(y_likes):
+    for idx, likes in enumerate(y_likes):
+        if likes > 300:
+            y_likes[idx] = 2
+        elif likes > 200 and likes <= 300:
+            y_likes[idx] = 1
+        elif likes <= 200:
+            y_likes[idx] = 0
+    return y_likes
+
+y_likes = convert_to_class(y_likes)
+
 # お気に入り数の分布
 # print(np.max(y_array), np.argmax(y_array))
 # print(len(y_array))
@@ -127,24 +141,18 @@ plt.ylabel('Number of count')
 # plt.savefig('distribution_favorite.png')
 plt.show()
 
-# お気に入り数をランク分けに変換
-for idx, num_likes in enumerate(y_likes):
-    if num_likes > 300:
-        y_likes[idx] = 2
-    elif num_likes > 200 and num_likes <= 300:
-        y_likes[idx] = 1
-    elif num_likes <= 200:
-        y_likes[idx] = 0
-
 # split train and test
 train_paths, test_paths, train_classes, test_classes, train_likes, test_likes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
 
 # input data profile
 season_classes = len(class_names) # 4 season
-rank_classes = np.argmax(y_likes)
-input_shape = len(train_paths)
-print(input_shape)
+rank_classes = np.max(y_likes)+1
+# input_shape = len(train_paths)
+# print(input_shape)
+print(rank_classes)
+print(season_classes)
 
+'''
 # 画像枚数が多いのでgeneratorで渡す
 # 季節分類
 season_train_gen = MyGenerator(train_paths, train_classes, num_of_class=season_classes, batch_size=128)
@@ -152,6 +160,62 @@ season_test_gen = MyGenerator(test_paths, test_classes, num_of_class=season_clas
 # お気に入り数分類
 rank_train_gen = MyGenerator(train_paths, train_likes, num_of_class=rank_classes, batch_size=128)
 rank_test_gen = MyGenerator(test_paths, test_likes, num_of_class=rank_classes, batch_size=128)
+'''
+
+"ImageDataGenerator"
+datagen = ImageDataGenerator(rescale=1./255, validation_split=0.1)
+
+season_train_gen = datagen.flow_from_directory(
+        'dataset',
+        target_size=(299, 299),
+        batch_size=128,
+        class_mode='categorical',
+        subset='training')
+
+season_test_gen = datagen.flow_from_directory(
+        'dataset',
+        target_size=(299, 299),
+        batch_size=128,
+        class_mode='categorical',
+        subset='validation',
+        save_to_dir='validation')
+
+def rankGenerator(target_dir, subset=None, train_ratio=0.1, batch_size=32, height=299, width=299):
+    file_list = glob(target_dir+'*/*')
+    regex = re.compile(r'like(.*).jpg')
+    # train test split
+    train_size = len(file_list) * (1-train_ratio)
+    train_size = int(train_size)
+    if subset == 'training':
+        split_file_list = file_list[:train_size]
+        np.random.shuffle(split_file_list)
+    elif subset == 'validation':
+        split_file_list = file_list[train_size:]
+        np.random.shuffle(split_file_list)
+    else:
+        split_file_list = file_list
+
+    for img_path in split_file_list:
+        x_array, y_array = [], []
+        # image
+        img = load_img(img_path) # img type = PIL.image
+        img_array = img_to_array(img) # np.array
+        img_array = cv2.resize(img_array, (height, width))
+        img_array /= 255.
+        x_array.append(img_array)
+        # ラベル y
+        mo = regex.search(img_path) # ファイル名からお気に入り数を取得
+        num_likes = mo.group(1)
+        y_array.append(int(num_likes))
+        if len(x_array) == batch_size:
+            y_array = convert_to_class(y_array)
+            x_array = np.asarray(x_array)
+            y_array = np.asarray(y_array)
+            yield x_array, y_array
+
+
+rank_train_gen = rankGenerator('dataset/', subset='training', batch_size=128)
+rank_test_gen = rankGenerator('dataset/', batch_size=128, subset='validation')
 
 
 """Inception v3"""
@@ -178,6 +242,7 @@ regression = Dense(rank_classes, activation='softmax', name='regression')(x_rgs)
 
 ## 季節分類
 # this is the model we will train
+# del model_cls
 model_cls = Model(inputs=base_model.input, outputs=classification)
 
 # first: train only the top layers (which were randomly initialized)
@@ -187,13 +252,14 @@ for layer in base_model.layers:
 
 # compile the model (should be done *after* setting layers to non-trainable)
 model_cls.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-
+steps_per_epoch = 35849 // 128
+validation_steps = 3981 // 128
 # train the model on the new data for a few epochs
 history_cls = model_cls.fit_generator(season_train_gen,
-                steps_per_epoch=season_train_gen.num_batches_per_epoch,
+                steps_per_epoch=steps_per_epoch,
                 validation_data=season_test_gen,
-                validation_steps=season_test_gen.num_batches_per_epoch,
-                epochs=2,
+                validation_steps=validation_steps,
+                epochs=3,
                 shuffle=True
                 )
 
@@ -220,31 +286,40 @@ model_cls.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_cros
 
 # we train our model again (this time fine-tuning the top 2 inception blocks
 # alongside the top Dense layers
-callbacks = [EarlyStopping(patience=5)]
+# callbacks = [EarlyStopping(patience=5)]
 history_cls_add = model_cls.fit_generator(season_train_gen,
-                steps_per_epoch=season_train_gen.num_batches_per_epoch,
+                steps_per_epoch=steps_per_epoch,
                 validation_data=season_test_gen,
-                validation_steps=season_test_gen.num_batches_per_epoch,
-                epochs=20,
-                callbaks=callbacks,
+                validation_steps=validation_steps,
+                epochs=30,
                 shuffle=True
                 )
 
 # save and eval model
 # evaluate(model_cls, x_test, cls_test, class_names)
 # save_show_results(history, model)
-model_cls.save('seasons_model.h5')
-show_history(history_cls)
+model_cls.save('seasons_model_add.h5')
+# show_history(history_cls)
+acc = history_cls.history['acc'] + history_cls_add.history['acc']
+val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
+plt.plot(range(33), acc, label='acc')
+plt.plot(range(33), val_acc, label='val_acc')
+plt.xlabel('epochs')
+plt.ylabel('accuracy')
+# plt.savefig('season_classifier.png')
+plt.show()
 
 ## お気に入り数の回帰
 # クラスに重み付け
+print(num_likes)
 ratio_likes = num_likes / np.max(num_likes) # 正規化
 ratio_likes = np.reciprocal(ratio_likes) # 逆数
 class_weight = {}
 for idx, value in enumerate(ratio_likes):
     class_weight[idx] = value
-# print(class_weight)
+print(class_weight)
 
+# del model_value
 model_value = Model(inputs=base_model.input, outputs=regression)
 
 for layer in base_model.layers:
@@ -253,13 +328,15 @@ for layer in base_model.layers:
 model_value.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
 
 # train the model on the new data for a few epochs
+
 history_value = model_value.fit_generator(rank_train_gen,
-                steps_per_epoch=rank_train_gen.num_batches_per_epoch,
+                steps_per_epoch=steps_per_epoch,
                 validation_data=rank_test_gen,
-                validation_steps=rank_test_gen.num_batches_per_epoch,
+                validation_steps=validation_steps,
                 epochs=1,
                 class_weight=class_weight,
-                shuffle=True
+                shuffle=True,
+                use_multiprocessing=True
                 )
 
 # we chose to train the top 2 inception blocks, i.e. we will freeze
@@ -271,20 +348,27 @@ for layer in model_value.layers[249:]:
 
 from keras.optimizers import SGD
 model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
-callbacks = [EarlyStopping(patience=5)]
+# callbacks = [EarlyStopping(patience=5)]
 history_value_add = model_value.fit_generator(rank_train_gen,
                 steps_per_epoch=rank_train_gen.num_batches_per_epoch,
                 validation_data=rank_test_gen,
                 validation_steps=rank_test_gen.num_batches_per_epoch,
                 epochs=10,
                 class_weight=class_weight,
-                callbacks=callbacks,
                 shuffle=True
                 )
 # save and eval model
-evaluate(model_value, x_test, value_test)
-# save_show_results(history, model)
-model_value.save('rank_model.h5')
+# evaluate(model_value, x_test, value_test)
+# show_history(history_value)
+acc = history_value.history['acc'] + history_value_add.history['acc']
+val_acc = history_value.history['val_acc'] + history_value_add.history['val_acc']
+plt.plot(range(33), acc, label='acc')
+plt.plot(range(33), val_acc, label='val_acc')
+plt.xlabel('epochs')
+plt.ylabel('accuracy')
+plt.savefig('favo_classifier.png')
+plt.show()
+model_value.save('rank_model_add.h5')
 
 
 # prediction
@@ -292,12 +376,12 @@ del model_cls
 model_cls = load_model('seasons_model.h5')
 
 # どの画像がどのクラスへ分類されたかを保存
-y_pred = model_cls.predict(x_test)
-# print(y_pred)
+y_pred = model_cls.predict_generator(season_test_gen)
+print(y_pred)
 class_pred = np.argmax(y_pred, axis=1)
-# print(class_pred.shape)
+print(class_pred)
 
-x_train, x_test, y_train, y_test = train_test_split(x_array, y_array, test_size=0.1, random_state=1225) #リサイズしているため再読み込み
+x_test = season_test_gen
 for idx, class_idx in enumerate(class_pred):
     cv2.imwrite('prediction/{0}/{1:04d}.jpg'.format(class_names[class_idx], idx), x_test[idx])
 
