@@ -20,10 +20,9 @@ from keras import backend as K
 from keras.utils import Sequence
 from keras.utils.np_utils import to_categorical
 from keras.preprocessing.image import ImageDataGenerator
+from keras import regularizers
 
-from ncc.validations import evaluate
-from ncc.history import show_history
-
+'''
 class MyGenerator(Sequence):
     """Custom generator"""
     def __init__(self, data_paths, data_classes, num_of_class=4, batch_size=32, width=299, height=299, ch=3):
@@ -85,7 +84,7 @@ class MyGenerator(Sequence):
         # ラベル y
         label = int(item_class)
         return img_array, label
-
+'''
 
 # get class name
 class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
@@ -163,24 +162,42 @@ rank_train_gen = MyGenerator(train_paths, train_likes, num_of_class=rank_classes
 rank_test_gen = MyGenerator(test_paths, test_likes, num_of_class=rank_classes, batch_size=128)
 '''
 
-"ImageDataGenerator"
-datagen = ImageDataGenerator(rescale=1./255, validation_split=0.1)
+"""ImageDataGenerator"""
+'''
+train_datagen = ImageDataGenerator(validation_split=0.1,
+            rescale=1./255,
+            rotation_range=40,
+            width_shift_range=0.2,
+            height_shift_range=0.2,
+            shear_range=0.2,
+            zoom_range=0.2,
+            horizontal_flip=True,
+            fill_mode='nearest')
+'''
+
+datagen = ImageDataGenerator(validation_split=0.1, rescale=1./255)
 
 season_train_gen = datagen.flow_from_directory(
-        'dataset',
+        'smalldataset',
         target_size=(299, 299),
         batch_size=128,
         class_mode='categorical',
-        subset='training')
+        subset='training',
+        shuffle=False)
 
 season_test_gen = datagen.flow_from_directory(
-        'dataset',
+        'smalldataset',
         target_size=(299, 299),
         batch_size=128,
         class_mode='categorical',
         subset='validation')
 
+img = season_train_gen[1][0][0]
+plt.imshow(img)
+season_train_gen[1][1][0]
 
+
+'''
 def rankGenerator(target_dir, num_classes=3, subset=None, train_ratio=0.1, batch_size=32, height=299, width=299):
     file_list = glob(target_dir+'*/*')
     regex = re.compile(r'like(.*).jpg')
@@ -221,7 +238,7 @@ def rankGenerator(target_dir, num_classes=3, subset=None, train_ratio=0.1, batch
 
 rank_train_gen = rankGenerator('dataset/', 3, batch_size=128, subset='training')
 rank_test_gen = rankGenerator('dataset/', 3, batch_size=128, subset='validation')
-
+'''
 
 """Inception v3"""
 # create the base pre-trained model
@@ -230,17 +247,19 @@ base_model = InceptionV3(weights='imagenet', include_top=False)
 x = base_model.output
 x = GlobalAveragePooling2D()(x)
 # classification
-x_cls = Dense(1024, activation='relu')(x)
+x_cls = Dense(256, activation='relu', kernel_regularizer=regularizers.l2(0.001))(x)
 x_cls = Dropout(0.25)(x_cls)
-x_cls = Dense(256, activation='relu')(x_cls)
+x_cls = Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.001))(x_cls)
 x_cls = Dropout(0.5)(x_cls)
 classification = Dense(season_classes, activation='softmax', name='classification')(x_cls)
+'''
 # regression
 x_rgs = Dense(1024, activation='relu')(x)
 x_rgs = Dropout(0.25)(x_rgs)
 x_rgs = Dense(256, activation='relu')(x_rgs)
 x_rgs = Dropout(0.5)(x_rgs)
 regression = Dense(rank_classes, activation='softmax', name='regression')(x_rgs)
+'''
 
 ## 季節分類
 # this is the model we will train
@@ -262,7 +281,7 @@ history_cls = model_cls.fit_generator(season_train_gen,
                 epochs=3,
                 shuffle=True
                 )
-
+model_cls.save_weights('seasons_small_weight_base.h5')
 # at this point, the top layers are well trained and we can start fine-tuning
 # convolutional layers from inception V3. We will freeze the bottom N layers
 # and train the remaining top layers.
@@ -300,17 +319,18 @@ history_cls_add = model_cls.fit_generator(season_train_gen,
 # save_show_results(history, model)
 json_model_cls = model_cls.to_json()
 open('seasons_model.json', 'w').write(json_model_cls)
-model_cls.save_weights('seasons_weight_add2.h5')
+model_cls.save_weights('seasons_small_weight_add.h5')
 # show_history(history_cls)
 acc = history_cls.history['acc'] + history_cls_add.history['acc']
 val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
-plt.plot(range(len(acc)), acc, label='acc')
-plt.plot(range(len(val_acc)), val_acc, label='val_acc')
+plt.plot(range(1, len(acc)+1), acc, label='acc')
+plt.plot(range(1, len(val_acc)+1), val_acc, label='val_acc')
 plt.xlabel('epochs')
 plt.ylabel('accuracy')
-# plt.savefig('season_classifier2.png')
+plt.savefig('season_small_classifier.png')
 plt.show()
 
+'''
 ## お気に入り数の回帰
 # クラスに重み付け
 print(num_likes)
@@ -369,7 +389,7 @@ plt.ylabel('accuracy')
 plt.savefig('favo_classifier2.png')
 plt.show()
 model_value.save('rank_model_add2.h5')
-
+'''
 
 # prediction
 from keras.models import model_from_json
@@ -381,7 +401,7 @@ model_cls = load_model('seasons_model_add.h5')
 
 datagen = ImageDataGenerator(rescale=1./255, validation_split=0.1)
 season_test_gen = datagen.flow_from_directory(
-        'dataset',
+        'smalldataset',
         target_size=(299, 299),
         batch_size=32,
         class_mode='categorical',
@@ -395,6 +415,7 @@ import collections
 collections.Counter(class_pred)
 
 x_test = season_test_gen
+class_names = dict([(v,k) for k,v in x_test.class_indices.items()])
 for idx, predict in enumerate(class_pred):
     x_temp = x_test[int(idx/32)][0][idx%32] * 255
     x_temp = x_temp.astype('uint8')
