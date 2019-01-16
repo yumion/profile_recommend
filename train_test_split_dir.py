@@ -33,9 +33,9 @@ for clsname in clsnames:
     for fname in fnames[:train_size]:
         src = os.path.join(base_dir, fname)
         dst = os.path.join(train_dir, fname)
-        shutil.copyfile(src, dst)
+        shutil.move(src, dst)
     # test
     for fname in fnames[train_size:]:
         src = os.path.join(base_dir, fname)
         dst = os.path.join(test_dir, fname)
-        shutil.copyfile(src, dst)
+        shutil.move(src, dst)

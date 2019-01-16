@@ -82,7 +82,7 @@ rank_classes = np.max(y_likes)+1
 print(rank_classes)
 
 
-def rankGenerator(target_dir, num_classes=3, subset=None, split_ratio=0.1, batch_size=32, height=299, width=299):
+def rankGenerator(target_dir, num_classes=3, subset=None, split_ratio=0.1, batch_size=32, height=224, width=224):
     file_list = glob(target_dir+'*/*')
     regex = re.compile(r'like(.*).jpg')
     # train test split
@@ -179,8 +179,8 @@ for layer in model_value.layers[90:]:
 from keras.optimizers import SGD
 model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
 callbacks = []
-callbacks.append(EarlyStopping(patience=20))
-callbacks.append(ModelCheckpoint(filepath='favo_weights_add_train.h5', save_best_only=True, save_weights_only=False))
+# callbacks.append(EarlyStopping(patience=20))
+callbacks.append(ModelCheckpoint(filepath='favo_ResNet_model_add_train.h5', save_best_only=True, save_weights_only=False))
 history_value_add = model_value.fit_generator(rank_train_gen,
                 steps_per_epoch=steps_per_epoch,
                 validation_data=rank_test_gen,
@@ -191,15 +191,30 @@ history_value_add = model_value.fit_generator(rank_train_gen,
                 shuffle=True,
                 use_multiprocessing=True
                 )
+
+for layer in model_value.layers[:90]:
+    layer.trainable = True
+model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
+history_value_add2 = model_value.fit_generator(rank_train_gen,
+                steps_per_epoch=steps_per_epoch,
+                validation_data=rank_test_gen,
+                validation_steps=validation_steps,
+                epochs=100,
+                class_weight=class_weight,
+                callbacks=callbacks,
+                shuffle=True,
+                use_multiprocessing=True
+                )
+
 # save and eval model
 # evaluate(model_value, x_test, value_test)
 # show_history(history_value)
-acc = history_value.history['acc'] + history_value_add.history['acc']
-val_acc = history_value.history['val_acc'] + history_value_add.history['val_acc']
+acc = history_value.history['acc'] + history_value_add.history['acc'] + history_value_add2.history['acc']
+val_acc = history_value.history['val_acc'] + history_value_add.history['val_acc'] + history_value_add2.history['val_acc']
 plt.plot(range(len(acc)), acc, label='acc')
 plt.plot(range(len(val_acc)), val_acc, label='val_acc')
 plt.xlabel('epochs')
 plt.ylabel('accuracy')
-plt.savefig('favo_classifier3.png')
+plt.savefig('favo_classifier4.png')
 plt.show()
 # model_value.save('rank_model_add.h5')

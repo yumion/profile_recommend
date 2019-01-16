@@ -309,7 +309,7 @@ plt.show()
 datagen = ImageDataGenerator(rescale=1./255)
 season_test_gen = datagen.flow_from_directory(
         'smalldataset/test',
-        target_size=(224, 224),
+        target_size=(299, 299),
         batch_size=32,
         class_mode='categorical')
 # どの画像がどのクラスへ分類されたかを保存
