@@ -7,7 +7,7 @@ from glob import glob
 import cv2
 import re
 from sklearn.model_selection import train_test_split
-from keras.callbacks import EarlyStopping
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import load_model
 from keras_preprocessing.image import img_to_array, list_pictures, load_img
 from keras.models import Model, Sequential
@@ -16,6 +16,8 @@ from keras.objectives import categorical_crossentropy, mse
 from keras.optimizers import SGD
 from keras.utils import plot_model
 from keras.applications.inception_v3 import InceptionV3
+from keras.applications.vgg16 import VGG16
+from keras.applications.resnet50 import ResNet50
 from keras import backend as K
 from keras.utils import Sequence
 from keras.utils.np_utils import to_categorical
@@ -84,10 +86,10 @@ class MyGenerator(Sequence):
         # ラベル y
         label = int(item_class)
         return img_array, label
-'''
+
 
 # get class name
-class_names = [x.split('/')[-1] for x in glob('dataset/*')] # クラス名をとってくる
+class_names = [x.split('/')[-1] for x in glob('smalldataset/train/*')] # クラス名をとってくる
 print(class_names)
 
 def load_img_path_and_class(target_dir):
@@ -122,9 +124,8 @@ def convert_to_class(y_likes):
     return y_likes
 
 
-x_paths, y_classes = load_img_path_and_class('dataset/')
-y_likes = load_num_likes_from_dir('dataset/*/*')
-
+# x_paths, y_classes = load_img_path_and_class('dataset/')
+y_likes = load_num_likes_from_dir('smalldataset/*/*')
 y_likes = convert_to_class(y_likes)
 
 # お気に入り数の分布
@@ -149,10 +150,10 @@ season_classes = len(class_names) # 4 season
 rank_classes = np.max(y_likes)+1
 # input_shape = len(train_paths)
 # print(input_shape)
-print(rank_classes)
 print(season_classes)
+print(rank_classes)
 
-'''
+
 # 画像枚数が多いのでgeneratorで渡す
 # 季節分類
 season_train_gen = MyGenerator(train_paths, train_classes, num_of_class=season_classes, batch_size=128)
@@ -162,9 +163,17 @@ rank_train_gen = MyGenerator(train_paths, train_likes, num_of_class=rank_classes
 rank_test_gen = MyGenerator(test_paths, test_likes, num_of_class=rank_classes, batch_size=128)
 '''
 
+
+# get class name
+class_names = [x.split('/')[-1] for x in glob('smalldataset/train/*')] # クラス名をとってくる
+print(class_names)
+
+# input data profile
+season_classes = len(class_names) # 4 season
+
 """ImageDataGenerator"""
-'''
-train_datagen = ImageDataGenerator(validation_split=0.1,
+
+train_datagen = ImageDataGenerator(
             rescale=1./255,
             rotation_range=40,
             width_shift_range=0.2,
@@ -173,98 +182,47 @@ train_datagen = ImageDataGenerator(validation_split=0.1,
             zoom_range=0.2,
             horizontal_flip=True,
             fill_mode='nearest')
-'''
 
-datagen = ImageDataGenerator(validation_split=0.1, rescale=1./255)
+test_datagen = ImageDataGenerator(rescale=1./255)
 
-season_train_gen = datagen.flow_from_directory(
-        'smalldataset',
+season_train_gen = train_datagen.flow_from_directory(
+        'smalldataset/train',
         target_size=(299, 299),
-        batch_size=128,
-        class_mode='categorical',
-        subset='training',
-        shuffle=False)
+        batch_size=32,
+        class_mode='categorical')
 
-season_test_gen = datagen.flow_from_directory(
-        'smalldataset',
+season_test_gen = test_datagen.flow_from_directory(
+        'smalldataset/test',
         target_size=(299, 299),
-        batch_size=128,
-        class_mode='categorical',
-        subset='validation')
-
-img = season_train_gen[1][0][0]
-plt.imshow(img)
-season_train_gen[1][1][0]
-
+        batch_size=32,
+        class_mode='categorical')
 
 '''
-def rankGenerator(target_dir, num_classes=3, subset=None, train_ratio=0.1, batch_size=32, height=299, width=299):
-    file_list = glob(target_dir+'*/*')
-    regex = re.compile(r'like(.*).jpg')
-    # train test split
-    train_size = len(file_list) * (1-train_ratio)
-    train_size = int(train_size)
-    if subset == 'training':
-        split_file_list = file_list[:train_size]
-        np.random.shuffle(split_file_list)
-    elif subset == 'validation':
-        split_file_list = file_list[train_size:]
-        np.random.shuffle(split_file_list)
-    else:
-        split_file_list = file_list
-    while True:
-        x_array, y_array = [], []
-        for img_path in split_file_list:
-            # image
-            img = load_img(img_path) # img type = PIL.image
-            img_array = img_to_array(img) # np.array
-            img_array = cv2.resize(img_array, (height, width))
-            img_array /= 255.
-            x_array.append(img_array)
-            # ラベル y
-            mo = regex.search(img_path) # ファイル名からお気に入り数を取得
-            num_likes = mo.group(1)
-            y_array.append(int(num_likes))
-            if len(x_array) == batch_size:
-                # 入力x
-                x_array = np.asarray(x_array)
-                # 教師ラベルy
-                y_array = convert_to_class(y_array)
-                y_array = np.asarray(y_array)
-                y_array = to_categorical(y_array, num_classes=num_classes) #one-hot
-                yield x_array, y_array
-                x_array, y_array = [], []
-
-
-rank_train_gen = rankGenerator('dataset/', 3, batch_size=128, subset='training')
-rank_test_gen = rankGenerator('dataset/', 3, batch_size=128, subset='validation')
-'''
-
 """Inception v3"""
 # create the base pre-trained model
-base_model = InceptionV3(weights='imagenet', include_top=False)
+# base_model = InceptionV3(weights='imagenet', include_top=False)
+base_model = VGG16(weights='imagenet', include_top=False)
+# base_model = ResNet50(weights='imagenet', include_top=False)
+
+# base_model.summary()
+# len(base_model.layers)
+
 # add a global spatial average pooling layer
 x = base_model.output
 x = GlobalAveragePooling2D()(x)
+# x = Flatten()(x)
 # classification
-x_cls = Dense(256, activation='relu', kernel_regularizer=regularizers.l2(0.001))(x)
+x_cls = Dense(1024, activation='relu')(x)
 x_cls = Dropout(0.25)(x_cls)
-x_cls = Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.001))(x_cls)
+x_cls = Dense(128, activation='relu')(x_cls)
 x_cls = Dropout(0.5)(x_cls)
 classification = Dense(season_classes, activation='softmax', name='classification')(x_cls)
-'''
-# regression
-x_rgs = Dense(1024, activation='relu')(x)
-x_rgs = Dropout(0.25)(x_rgs)
-x_rgs = Dense(256, activation='relu')(x_rgs)
-x_rgs = Dropout(0.5)(x_rgs)
-regression = Dense(rank_classes, activation='softmax', name='regression')(x_rgs)
-'''
 
 ## 季節分類
 # this is the model we will train
 # del model_cls
 model_cls = Model(inputs=base_model.input, outputs=classification)
+
 
 # first: train only the top layers (which were randomly initialized)
 # i.e. freeze all convolutional InceptionV3 layers
@@ -272,7 +230,7 @@ for layer in base_model.layers:
     layer.trainable = False
 
 # compile the model (should be done *after* setting layers to non-trainable)
-model_cls.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
+model_cls.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['acc'])
 # train the model on the new data for a few epochs
 history_cls = model_cls.fit_generator(season_train_gen,
                 steps_per_epoch=len(season_train_gen),
@@ -281,11 +239,12 @@ history_cls = model_cls.fit_generator(season_train_gen,
                 epochs=3,
                 shuffle=True
                 )
-model_cls.save_weights('seasons_small_weight_base.h5')
+model_cls.save_weights('VGGaug_seasons_weight_base.h5')
 # at this point, the top layers are well trained and we can start fine-tuning
 # convolutional layers from inception V3. We will freeze the bottom N layers
 # and train the remaining top layers.
-
+'''
+model_cls = load_model('seasons_VGGaug_weights_add_train.h5')
 # let's visualize layer names and layer indices to see how many layers
 # we should freeze:
 # for i, layer in enumerate(base_model.layers):
@@ -293,9 +252,12 @@ model_cls.save_weights('seasons_small_weight_base.h5')
 
 # we chose to train the top 2 inception blocks, i.e. we will freeze
 # the first 249 layers and unfreeze the rest:
-for layer in model_cls.layers[:249]:
-    layer.trainable = False
-for layer in model_cls.layers[249:]:
+# InceptionV3 :249
+# ResNet50 :90
+# VGG :15
+for layer in model_cls.layers[:15]:
+    layer.trainable = True
+for layer in model_cls.layers[15:]:
     layer.trainable = True
 
 # we need to recompile the model for these modifications to take effect
@@ -304,12 +266,14 @@ from keras.optimizers import SGD
 model_cls.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
 # we train our model again (this time fine-tuning the top 2 inception blocks
 # alongside the top Dense layers
-callbacks = [EarlyStopping(patience=5)]
+callbacks = []
+# callbacks.append(EarlyStopping(patience=20))
+callbacks.append(ModelCheckpoint(filepath='seasons_VGGaug_weights_add_train.h5', save_best_only=True, save_weights_only=False))
 history_cls_add = model_cls.fit_generator(season_train_gen,
                 steps_per_epoch=len(season_train_gen),
                 validation_data=season_test_gen,
                 validation_steps=len(season_test_gen),
-                epochs=20,
+                epochs=100,
                 callbacks=callbacks,
                 shuffle=True
                 )
@@ -317,105 +281,48 @@ history_cls_add = model_cls.fit_generator(season_train_gen,
 # save and eval model
 # evaluate(model_cls, x_test, cls_test, class_names)
 # save_show_results(history, model)
-json_model_cls = model_cls.to_json()
-open('seasons_model.json', 'w').write(json_model_cls)
-model_cls.save_weights('seasons_small_weight_add.h5')
+# json_model_cls = model_cls.to_json()
+# open('seasons_model.json', 'w').write(json_model_cls)
+# model_cls.save_weights('seasons_small_weight_add.h5')
 # show_history(history_cls)
-acc = history_cls.history['acc'] + history_cls_add.history['acc']
-val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
+# acc = history_cls.history['acc'] + history_cls_add.history['acc']
+# val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
+acc = history_cls_add.history['acc']
+val_acc = history_cls_add.history['val_acc']
 plt.plot(range(1, len(acc)+1), acc, label='acc')
 plt.plot(range(1, len(val_acc)+1), val_acc, label='val_acc')
 plt.xlabel('epochs')
 plt.ylabel('accuracy')
-plt.savefig('season_small_classifier.png')
+plt.legend()
+plt.savefig('season_smallaug_classifier.png')
 plt.show()
 
-'''
-## お気に入り数の回帰
-# クラスに重み付け
-print(num_likes)
-ratio_likes = num_likes / np.max(num_likes) # 正規化
-ratio_likes = np.reciprocal(ratio_likes) # 逆数
-class_weight = {}
-for idx, value in enumerate(ratio_likes):
-    class_weight[idx] = value
-print(class_weight)
-
-# del model_value
-model_value = Model(inputs=base_model.input, outputs=regression)
-
-for layer in base_model.layers:
-    layer.trainable = False
-
-model_value.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-# train the model on the new data for a few epochs
-history_value = model_value.fit_generator(rank_train_gen,
-                steps_per_epoch=len(season_train_gen),
-                validation_data=rank_test_gen,
-                validation_steps=len(season_test_gen),
-                epochs=3,
-                class_weight=class_weight,
-                shuffle=True
-                )
-
-# we chose to train the top 2 inception blocks, i.e. we will freeze
-# the first 249 layers and unfreeze the rest:
-for layer in model_value.layers[:249]:
-    layer.trainable = False
-for layer in model_value.layers[249:]:
-    layer.trainable = True
-
-from keras.optimizers import SGD
-model_value.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_crossentropy', metrics=['acc'])
-callbacks = [EarlyStopping(patience=5)]
-history_value_add = model_value.fit_generator(rank_train_gen,
-                steps_per_epoch=len(season_train_gen),
-                validation_data=rank_test_gen,
-                validation_steps=len(season_test_gen),
-                epochs=10,
-                class_weight=class_weight,
-                callbacks=callbacks,
-                shuffle=True
-                )
-# save and eval model
-# evaluate(model_value, x_test, value_test)
-# show_history(history_value)
-acc = history_value.history['acc'] + history_value_add.history['acc']
-val_acc = history_value.history['val_acc'] + history_value_add.history['val_acc']
-plt.plot(range(len(acc)), acc, label='acc')
-plt.plot(range(len(val_acc)), val_acc, label='val_acc')
-plt.xlabel('epochs')
-plt.ylabel('accuracy')
-plt.savefig('favo_classifier2.png')
-plt.show()
-model_value.save('rank_model_add2.h5')
-'''
 
 # prediction
-from keras.models import model_from_json
-del model_cls
-model_cls = load_model('seasons_model_add.h5')
+# from keras.models import model_from_json
+# del model_cls
+# model_cls = load_model('seasons_InceptionV3_weights_add_train.h5')
 # json_string = open('seasons_model.json').read()
 # model_cls = model_from_json(json_string)
 # model_cls.load_weights('seasons_weight_add.h5')
 
-datagen = ImageDataGenerator(rescale=1./255, validation_split=0.1)
+datagen = ImageDataGenerator(rescale=1./255)
 season_test_gen = datagen.flow_from_directory(
-        'smalldataset',
-        target_size=(299, 299),
+        'smalldataset/test',
+        target_size=(224, 224),
         batch_size=32,
-        class_mode='categorical',
-        subset='validation')
+        class_mode='categorical')
 # どの画像がどのクラスへ分類されたかを保存
 y_pred = model_cls.predict_generator(season_test_gen, steps=len(season_test_gen))
 print(y_pred)
 class_pred = np.argmax(y_pred, axis=1)
 print(class_pred)
 import collections
-collections.Counter(class_pred)
+print(collections.Counter(class_pred))
 
 x_test = season_test_gen
 class_names = dict([(v,k) for k,v in x_test.class_indices.items()])
+print(class_names)
 for idx, predict in enumerate(class_pred):
     x_temp = x_test[int(idx/32)][0][idx%32] * 255
     x_temp = x_temp.astype('uint8')
