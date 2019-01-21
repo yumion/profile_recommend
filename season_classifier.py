@@ -112,35 +112,8 @@ def load_num_likes_from_dir(target_dir):
         y_array.append(int(num_likes)) # label
     return y_array
 
-# お気に入り数をランク分けに変換
-def convert_to_class(y_likes):
-    for idx, likes in enumerate(y_likes):
-        if likes > 300:
-            y_likes[idx] = 2
-        elif likes > 200 and likes <= 300:
-            y_likes[idx] = 1
-        elif likes <= 200:
-            y_likes[idx] = 0
-    return y_likes
-
-
 # x_paths, y_classes = load_img_path_and_class('dataset/')
-y_likes = load_num_likes_from_dir('smalldataset/*/*')
-y_likes = convert_to_class(y_likes)
 
-# お気に入り数の分布
-# print(np.max(y_array), np.argmax(y_array))
-# print(len(y_array))
-num_likes = np.zeros(np.max(y_likes)+1)
-for like in y_likes:
-    num_likes[like] += 1
-plt.bar(np.arange(len(num_likes)), num_likes)
-plt.xlabel('Number of favorite')
-plt.ylabel('Number of count')
-# plt.xlim(0, 1100)
-# plt.ylim(0,200)
-# plt.savefig('distribution_favorite.png')
-plt.show()
 
 # split train and test
 # train_paths, test_paths, train_classes, test_classes, train_likes, test_likes = train_test_split(x_paths, y_classes, y_likes, test_size=0.1, random_state=1225)
@@ -165,11 +138,11 @@ rank_test_gen = MyGenerator(test_paths, test_likes, num_of_class=rank_classes, b
 
 
 # get class name
-class_names = [x.split('/')[-1] for x in glob('smalldataset/train/*')] # クラス名をとってくる
-print(class_names)
+# class_names = [x.split('/')[-1] for x in glob('google_dataset/train/*')] # クラス名をとってくる
+# print(class_names)
 
 # input data profile
-season_classes = len(class_names) # 4 season
+season_classes = 4 # 4 season
 
 """ImageDataGenerator"""
 
@@ -186,23 +159,24 @@ train_datagen = ImageDataGenerator(
 test_datagen = ImageDataGenerator(rescale=1./255)
 
 season_train_gen = train_datagen.flow_from_directory(
-        'smalldataset/train',
-        target_size=(299, 299),
-        batch_size=32,
+        'broken_dataset_like300over_is_disappear/train',
+        target_size=(224, 224),
+        batch_size=128,
         class_mode='categorical')
 
 season_test_gen = test_datagen.flow_from_directory(
-        'smalldataset/test',
-        target_size=(299, 299),
-        batch_size=32,
-        class_mode='categorical')
+        'broken_dataset_like300over_is_disappear/test',
+        target_size=(224, 224),
+        batch_size=128,
+        class_mode='categorical',
+        shuffle=False)
 
-'''
-"""Inception v3"""
+
+"""BASE MODEL"""
 # create the base pre-trained model
 # base_model = InceptionV3(weights='imagenet', include_top=False)
-base_model = VGG16(weights='imagenet', include_top=False)
-# base_model = ResNet50(weights='imagenet', include_top=False)
+# base_model = VGG16(weights='imagenet', include_top=False)
+base_model = ResNet50(weights='imagenet', include_top=False)
 
 # base_model.summary()
 # len(base_model.layers)
@@ -212,9 +186,9 @@ x = base_model.output
 x = GlobalAveragePooling2D()(x)
 # x = Flatten()(x)
 # classification
-x_cls = Dense(1024, activation='relu')(x)
+x_cls = Dense(1024, activation='relu', kernel_regularizer=regularizers.l2(0.01))(x)
 x_cls = Dropout(0.25)(x_cls)
-x_cls = Dense(128, activation='relu')(x_cls)
+x_cls = Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.01))(x_cls)
 x_cls = Dropout(0.5)(x_cls)
 classification = Dense(season_classes, activation='softmax', name='classification')(x_cls)
 
@@ -239,12 +213,12 @@ history_cls = model_cls.fit_generator(season_train_gen,
                 epochs=3,
                 shuffle=True
                 )
-model_cls.save_weights('VGGaug_seasons_weight_base.h5')
+model_cls.save_weights('ResNetaug_seasons_weight_base2.h5')
 # at this point, the top layers are well trained and we can start fine-tuning
 # convolutional layers from inception V3. We will freeze the bottom N layers
 # and train the remaining top layers.
-'''
-model_cls = load_model('seasons_VGGaug_weights_add_train.h5')
+
+# model_cls = load_model('seasons_VGGaug_weights_add_train.h5')
 # let's visualize layer names and layer indices to see how many layers
 # we should freeze:
 # for i, layer in enumerate(base_model.layers):
@@ -255,9 +229,9 @@ model_cls = load_model('seasons_VGGaug_weights_add_train.h5')
 # InceptionV3 :249
 # ResNet50 :90
 # VGG :15
-for layer in model_cls.layers[:15]:
-    layer.trainable = True
-for layer in model_cls.layers[15:]:
+for layer in model_cls.layers[:90]:
+    layer.trainable = False
+for layer in model_cls.layers[90:]:
     layer.trainable = True
 
 # we need to recompile the model for these modifications to take effect
@@ -268,7 +242,7 @@ model_cls.compile(optimizer=SGD(lr=0.0001, momentum=0.9), loss='categorical_cros
 # alongside the top Dense layers
 callbacks = []
 # callbacks.append(EarlyStopping(patience=20))
-callbacks.append(ModelCheckpoint(filepath='seasons_VGGaug_weights_add_train.h5', save_best_only=True, save_weights_only=False))
+callbacks.append(ModelCheckpoint(filepath='seasons_ResNetaug_weights_add_train.h5', save_best_only=True, save_weights_only=False))
 history_cls_add = model_cls.fit_generator(season_train_gen,
                 steps_per_epoch=len(season_train_gen),
                 validation_data=season_test_gen,
@@ -285,36 +259,41 @@ history_cls_add = model_cls.fit_generator(season_train_gen,
 # open('seasons_model.json', 'w').write(json_model_cls)
 # model_cls.save_weights('seasons_small_weight_add.h5')
 # show_history(history_cls)
-# acc = history_cls.history['acc'] + history_cls_add.history['acc']
-# val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
-acc = history_cls_add.history['acc']
-val_acc = history_cls_add.history['val_acc']
+acc = history_cls.history['acc'] + history_cls_add.history['acc']
+val_acc = history_cls.history['val_acc'] + history_cls_add.history['val_acc']
+# acc = history_cls_add.history['acc']
+# val_acc = history_cls_add.history['val_acc']
 plt.plot(range(1, len(acc)+1), acc, label='acc')
 plt.plot(range(1, len(val_acc)+1), val_acc, label='val_acc')
 plt.xlabel('epochs')
 plt.ylabel('accuracy')
 plt.legend()
-plt.savefig('season_smallaug_classifier.png')
+plt.savefig('ResNet_season_aug_classifier.png')
 plt.show()
 
 
 # prediction
 # from keras.models import model_from_json
 # del model_cls
-# model_cls = load_model('seasons_InceptionV3_weights_add_train.h5')
+# model_cls = load_model('google_seasons_VGGaug_weights_add_train.h5')
 # json_string = open('seasons_model.json').read()
 # model_cls = model_from_json(json_string)
 # model_cls.load_weights('seasons_weight_add.h5')
 
 datagen = ImageDataGenerator(rescale=1./255)
+
 season_test_gen = datagen.flow_from_directory(
-        'smalldataset/test',
-        target_size=(299, 299),
-        batch_size=32,
-        class_mode='categorical')
+        'google_dataset/test',
+        target_size=(224, 224),
+        batch_size=128,
+        class_mode='categorical',
+        shuffle=False)
+print(season_test_gen.class_indices)
+
 # どの画像がどのクラスへ分類されたかを保存
 y_pred = model_cls.predict_generator(season_test_gen, steps=len(season_test_gen))
 print(y_pred)
+
 class_pred = np.argmax(y_pred, axis=1)
 print(class_pred)
 import collections

@@ -2,7 +2,7 @@ import os, shutil
 from glob import glob
 import numpy as np
 
-base_dir = 'smalldataset'
+base_dir = 'dataset'
 
 # make train directory
 train_dir = os.path.join(base_dir, 'train')
@@ -23,9 +23,9 @@ for clsname in clsnames:
 
 # move datset to train/test
 for clsname in clsnames:
-    fnames = glob('smalldataset/{clsname}/*'.format(clsname=clsname))
+    fnames = glob('{parent}/{clsname}/*'.format(parent=base_dir, clsname=clsname))
     np.random.shuffle(fnames)
-    fnames = [fname.split('smalldataset/')[-1] for fname in fnames]
+    fnames = [fname.split(base_dir+'/')[-1] for fname in fnames]
     # number of train
     num_data = len(glob(base_dir+'/{}/*'.format(clsname)))
     train_size = int(num_data*0.9)
@@ -33,9 +33,9 @@ for clsname in clsnames:
     for fname in fnames[:train_size]:
         src = os.path.join(base_dir, fname)
         dst = os.path.join(train_dir, fname)
-        shutil.move(src, dst)
+        shutil.copyfile(src, dst)
     # test
     for fname in fnames[train_size:]:
         src = os.path.join(base_dir, fname)
         dst = os.path.join(test_dir, fname)
-        shutil.move(src, dst)
+        shutil.copyfile(src, dst)
